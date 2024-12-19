@@ -1,0 +1,112 @@
+name: Release Regression Workflow
+
+on:
+  push:
+    branches:
+      - release-v*
+
+jobs:
+  generate_regression:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        # should use hash commit due to security issues
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 0
+
+      - name: Get branch name and version
+        id: branch_info
+        run: |
+          BRANCH_NAME=${GITHUB_REF#refs/heads/}
+          APP_VERSION=${BRANCH_NAME#release-v}
+          echo "branch_name=$BRANCH_NAME" >> $GITHUB_OUTPUT
+          echo "app_version=$APP_VERSION" >> $GITHUB_OUTPUT
+
+      - name: Update pubspec version
+        run: |
+          sed -i "s/^version: .*/version: ${{ steps.branch_info.outputs.app_version }}/" pubspec.yaml
+
+      - name: Commit and push the version update and create a Pull Request to master.
+        uses: peter-evans/create-pull-request@76c6f5c20e2111bfee3cd30fae52a25e410f5efc
+        with:
+          # personal access token of the mobile deriv apps
+          token: ${{ secrets.MOBILE_APPS_PAT }}
+          title: "chore: sync branches, merge release version ${{ steps.branch_info.outputs.app_version }} into master"
+          branch: ${{ steps.branch_info.outputs.branch_name }}
+          commit-message: "chore: update app version to ${{ steps.branch_info.outputs.app_version }}"
+          base: master
+
+      - name: Generate tag name
+        id: tag_info
+        run: |
+          DATE=$(date +'%d-%m-%Y')
+          BASE_TAG="firebase-${DATE}-${{ steps.branch_info.outputs.app_version }}"
+
+          # Check for existing tags with same app version
+          EXISTING_TAGS=$(git tag -l "firebase-*-${{ steps.branch_info.outputs.app_version }}*")
+          if [ -z "$EXISTING_TAGS" ]; then
+            TAG_NAME=$BASE_TAG
+          else
+            COUNT=$(echo "$EXISTING_TAGS" | wc -l)
+            TAG_NAME="${BASE_TAG}+${COUNT}"
+          fi
+          echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
+
+      - name: Create Release Tag
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.MOBILE_APPS_PAT }} # personal access token mobile team account
+        with:
+          tag_name: ${{ steps.tag_info.outputs.tag_name }}
+          release_name: Release ${{ steps.tag_info.outputs.tag_name }}
+          body: |
+            Automated release for version ${{ steps.branch_info.outputs.app_version }}
+
+            Changes since last release:
+            ${{ github.event.head_commit.message }}
+          draft: false
+          prerelease: true
+
+      - name: Wait for Bitrise Build
+        id: wait_build
+        run: |
+          # Wait for build to appear (it might take a few seconds after tag creation)
+          sleep 30
+
+          while true; do
+            # Get recent builds
+            BUILDS=$(curl -s https://api.bitrise.io/v0.1/apps/${{ secrets.BITRISE_APP_ID }}/builds \
+              --header "Authorization: ${{ secrets.BITRISE_PAT }}")
+
+            # look for build with matching tag
+            BUILD_DATA=$(echo $BUILDS | jq -r --arg TAG "${{ steps.tag_info.outputs.tag_name }}" \
+              '.data[] | select(.triggered_by_tag == $TAG) | {status: .status_text, build_number: .build_number}' | head -n 1)
+
+            if [ ! -z "$BUILD_DATA" ]; then
+              STATUS=$(echo $BUILD_DATA | jq -r '.status')
+              BUILD_NUMBER=$(echo $BUILD_DATA | jq -r '.build_number')
+
+              echo "Current build status: $STATUS"
+              echo "build_number=$BUILD_NUMBER" >> $GITHUB_OUTPUT
+
+              if [ "$STATUS" = "success" ]; then
+                echo "Build succeeded!"
+                exit 0
+              elif [ "$STATUS" = "failed" ] || [ "$STATUS" = "aborted" ]; then
+                echo "Build failed with status: $STATUS"
+                exit 1
+              fi
+            fi
+
+            echo "Waiting 30 seconds before next check..."
+            sleep 30
+          done
+
+      - name: Send Success Slack Notification
+        if: steps.wait_build.outcome == 'success'
+        uses: ./.github/actions/send_slack_notification/regression_notification
+        with:
+          SLACK_WEBHOOK_URL: ${{ secrets.RELEASE_SLACK_WEBHOOK_URL }}
+          BETA_VERSION: ${{ steps.tag_info.outputs.tag_name }}
+          BUILD_NUMBER: ${{ steps.wait_build.outputs.build_number }}

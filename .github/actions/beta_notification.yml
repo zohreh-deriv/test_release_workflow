@@ -1,0 +1,37 @@
+name: beta_notification
+description: Send Slack notifications for beta build
+inputs:
+  SLACK_WEBHOOK_URL:
+    description: "Slack webhook URL"
+    required: true
+  BETA_VERSION:
+    description: "Beta version"
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Send Slack Notification on pull request merge
+      env:
+        SLACK_WEBHOOK_URL: ${{ inputs.SLACK_WEBHOOK_URL }}
+      run: |
+        curl -X POST -H 'Content-type: application/json' \
+        --data '{
+          "blocks": [
+            {
+              "type": "section",
+              "text": {
+                "type": "mrkdwn",
+                "text": "<!channel> *🚀 New Beta Build: Version ${BETA_VERSION} Available for Testing!*"
+              }
+            },
+            {
+              "type": "section",
+              "text": {
+                "type": "mrkdwn",
+                "text": "@here Hi Team,\n\nWe’re excited to announce that *Version ${BETA_VERSION}* of our product is now available for internal testing! 🎉\n\nPlease test thoroughly and share your feedback.\nWe aim to release this version ASAP once we receive your green light! 🟢"
+              }
+            }
+          ]
+        }' \
+        $SLACK_WEBHOOK_URL
+      shell: bash

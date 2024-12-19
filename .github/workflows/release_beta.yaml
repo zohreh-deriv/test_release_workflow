@@ -1,0 +1,166 @@
+name: Release Beta Workflow
+
+on:
+  issue_comment:
+    types: [created]
+
+jobs:
+  generate_beta:
+    if: ${{ github.event.issue.pull_request && github.event.comment.body == 'trigger-beta' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: read
+      issues: read
+
+    steps:
+      - name: Check user permissions
+        id: check_permissions
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const username = context.payload.comment.user.login;
+
+            try {
+              const { data: permission } = await github.rest.repos.getCollaboratorPermissionLevel({
+                owner,
+                repo,
+                username,
+              });
+              
+              if (!['admin', 'write'].includes(permission.permission)) {
+                core.setFailed('User does not have write access to the repository');
+                return false;
+              }
+              return true;
+            } catch (error) {
+              core.setFailed('Failed to check user permissions');
+              return false;
+            }
+
+      - name: Get PR Details
+        if: steps.check_permissions.outputs.result == 'true'
+        id: pr_details
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const prResponse = await github.rest.pulls.get({
+              owner,
+              repo,
+              pull_number: context.issue.number
+            });
+            const prTitle = prResponse.data.title;
+            if (!prTitle.startsWith('chore: sync branches')) {
+              core.setFailed('PR title does not start with "chore: sync branches"');
+              return;
+            }
+            return { prTitle };
+
+      - name: Checkout code
+        if: steps.check_permissions.outputs.result == 'true'
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: release-version
+          fetch-depth: 0
+          token: ${{ secrets.MOBILE_APPS_PAT }}
+
+      - name: Get version from pubspec
+        if: steps.check_permissions.outputs.result == 'true'
+        id: get_version
+        run: |
+          VERSION=$(grep 'version:' pubspec.yaml | cut -d' ' -f2 | tr -d '\r')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Generate unique tag name
+        if: steps.check_permissions.outputs.result == 'true'
+        id: generate_tag
+        run: |
+          BASE_TAG="internal-v${{ steps.get_version.outputs.version }}"
+          if ! git rev-parse "$BASE_TAG" >/dev/null 2>&1; then
+            echo "tag_name=$BASE_TAG" >> $GITHUB_OUTPUT
+          else
+            counter=1
+            while git rev-parse "$BASE_TAG+$counter" >/dev/null 2>&1; do
+              counter=$((counter + 1))
+            done
+            echo "tag_name=$BASE_TAG+$counter" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create and push tag
+        if: steps.check_permissions.outputs.result == 'true'
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git tag -a ${{ steps.generate_tag.outputs.tag_name }} -m "Beta release ${{ steps.generate_tag.outputs.tag_name }}"
+          git push origin ${{ steps.generate_tag.outputs.tag_name }}
+
+      - name: Create Release
+        if: steps.check_permissions.outputs.result == 'true'
+        uses: softprops/action-gh-release@7b4da11513bf3f43f9999e90eabced41ab8bb048
+        with:
+          tag_name: ${{ steps.generate_tag.outputs.tag_name }}
+          name: Beta Release ${{ steps.generate_tag.outputs.tag_name }}
+          generate_release_notes: true
+          prerelease: false
+          make_latest: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.MOBILE_APPS_PAT }}
+
+      - name: Wait for Bitrise Build
+        if: steps.check_permissions.outputs.result == 'true'
+        id: wait_build
+        run: |
+          # Wait for build to appear (it might take a few seconds after tag creation)
+          sleep 30
+
+          while true; do
+            # Get recent builds
+            BUILDS=$(curl -s https://api.bitrise.io/v0.1/apps/${{ secrets.BITRISE_APP_ID }}/builds \
+              --header "Authorization: ${{ secrets.BITRISE_PAT }}")
+            
+            # Look for build with matching tag
+            BUILD_DATA=$(echo $BUILDS | jq -r --arg TAG "${{ steps.generate_tag.outputs.tag_name }}" \
+              '.data[] | select(.triggered_by_tag == $TAG) | {status: .status_text, build_number: .build_number}' | head -n 1)
+            
+            if [ ! -z "$BUILD_DATA" ]; then
+              STATUS=$(echo $BUILD_DATA | jq -r '.status')
+              BUILD_NUMBER=$(echo $BUILD_DATA | jq -r '.build_number')
+              
+              echo "Current build status: $STATUS"
+              echo "build_number=$BUILD_NUMBER" >> $GITHUB_OUTPUT
+              
+              if [ "$STATUS" = "success" ]; then
+                echo "Build succeeded!"
+                exit 0
+              elif [ "$STATUS" = "failed" ] || [ "$STATUS" = "aborted" ]; then
+                echo "Build failed with status: $STATUS"
+                exit 1
+              fi
+            fi
+            
+            echo "Waiting 30 seconds before next check..."
+            sleep 30
+          done
+
+      - name: Send Success Slack Notification
+        if: steps.check_permissions.outputs.result == 'true' && steps.wait_build.outcome == 'success'
+        uses: ./.github/actions/send_slack_notification/beta_notification
+        with:
+          SLACK_WEBHOOK_URL: ${{ secrets.RELEASE_SLACK_WEBHOOK_URL }}
+          BETA_VERSION: ${{ steps.generate_tag.outputs.tag_name }}
+          BUILD_NUMBER: ${{ steps.wait_build.outputs.build_number }}
+
+      - name: Comment on PR if user lacks permission
+        if: steps.check_permissions.outputs.result == 'false'
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            await github.rest.issues.createComment({
+              owner,
+              repo,
+              issue_number: context.issue.number,
+              body: '❌ Unable to trigger beta release: You do not have write access to this repository.'
+            });

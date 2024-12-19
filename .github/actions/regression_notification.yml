@@ -1,0 +1,46 @@
+name: regression_notification
+description: Send Slack notifications for regression build
+inputs:
+  SLACK_WEBHOOK_URL:
+    description: "Slack webhook URL"
+    required: true
+  New_VERSION:
+    description: "New version"
+    required: true
+  BUILD_NUMBER:
+    description: "Build number"
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Send Slack Notification on pull request merge
+      env:
+        SLACK_WEBHOOK_URL: ${{ inputs.SLACK_WEBHOOK_URL }}
+      run: |
+        curl -X POST -H 'Content-type: application/json' \
+        --data '{
+          "blocks": [
+            {
+              "type": "section",
+              "text": {
+                "type": "mrkdwn",
+                "text": "<!channel> *🔄 Regression Build Available: version ${New_VERSION}*"
+              }
+            },
+            {
+              "type": "section",
+              "text": {
+                "type": "mrkdwn",
+                "text": "*Build Number: ${BUILD_NUMBER}*"
+              },
+            {
+              "type": "section",
+              "text": {
+                "type": "mrkdwn",
+                "text": "@here Hi Team,\n\nThe regression build for Version 1.1.2 is now ready for testing! 🎯\n\nPlease prioritize testing and report any issues.\n"
+              }
+            }
+          ]
+        }' \
+        $SLACK_WEBHOOK_URL
+      shell: bash
