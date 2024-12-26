@@ -64,7 +64,7 @@ jobs:
         with:
           ref: release-version
           fetch-depth: 0
-          token: ${{ secrets.MOBILE_APPS_PAT }}
+          ssh-key: ${{ secrets.SSH_PRIVATE_KEY }}
 
       - name: Get version from pubspec
         if: steps.check_permissions.outputs.result == 'true'
