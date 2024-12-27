@@ -76,19 +76,41 @@ jobs:
           sleep 30
 
           while true; do
-            # Get recent builds
-            BUILDS=$(curl -s https://api.bitrise.io/v0.1/apps/${{ secrets.BITRISE_APP_ID }}/builds \
+            echo "Checking for build with tag: ${{ steps.tag_info.outputs.tag_name }}"
+            
+            # Get recent builds with curl verbose mode to see the full request/response
+            BUILDS=$(curl -v -s https://api.bitrise.io/v0.1/apps/${{ secrets.BITRISE_APP_ID }}/builds \
               --header "Authorization: ${{ secrets.BITRISE_PAT }}")
+            
+            # Debug: Check API response structure
+            echo "API Response Structure:"
+            echo "$BUILDS" | jq '.'
+            
+            # Check if response contains data array
+            if ! echo "$BUILDS" | jq -e '.data' > /dev/null; then
+              echo "Error: API response does not contain 'data' array"
+              echo "Full API Response:"
+              echo "$BUILDS"
+              echo "Waiting 30 seconds before retry..."
+              sleep 30
+              continue
+            fi
+
+            echo "Searching for build with tag in response data..."
+            # Debug: Show all builds and their tags
+            echo "$BUILDS" | jq -r '.data[] | "Build number: \(.build_number), Tag: \(.triggered_by_tag)"'
 
             # look for build with matching tag
-            BUILD_DATA=$(echo $BUILDS | jq -r --arg TAG "${{ steps.tag_info.outputs.tag_name }}" \
+            BUILD_DATA=$(echo "$BUILDS" | jq -r --arg TAG "${{ steps.tag_info.outputs.tag_name }}" \
               '.data[] | select(.triggered_by_tag == $TAG) | {status: .status_text, build_number: .build_number}' | head -n 1)
 
             if [ ! -z "$BUILD_DATA" ]; then
-              STATUS=$(echo $BUILD_DATA | jq -r '.status')
-              BUILD_NUMBER=$(echo $BUILD_DATA | jq -r '.build_number')
+              STATUS=$(echo "$BUILD_DATA" | jq -r '.status')
+              BUILD_NUMBER=$(echo "$BUILD_DATA" | jq -r '.build_number')
 
+              echo "Found matching build!"
               echo "Current build status: $STATUS"
+              echo "Build number: $BUILD_NUMBER"
               echo "build_number=$BUILD_NUMBER" >> $GITHUB_OUTPUT
 
               if [ "$STATUS" = "success" ]; then
@@ -98,6 +120,8 @@ jobs:
                 echo "Build failed with status: $STATUS"
                 exit 1
               fi
+            else
+              echo "No build found with tag: ${{ steps.tag_info.outputs.tag_name }}"
             fi
 
             echo "Waiting 30 seconds before next check..."
