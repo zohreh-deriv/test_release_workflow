@@ -79,7 +79,7 @@ jobs:
             echo "Checking for build with tag: ${{ steps.tag_info.outputs.tag_name }}"
             
             # Get recent builds with curl verbose mode to see the full request/response
-            BUILDS=$(curl -v -s https://api.bitrise.io/v0.1/apps/${{ secrets.BITRISE_APP_ID }}/builds \
+            BUILDS=$(curl -v -s https://app.bitrise.io/app/${{ secrets.BITRISE_APP_ID }}/builds \
               --header "Authorization: ${{ secrets.BITRISE_PAT }}")
             
             # Debug: Check API response structure
