@@ -108,7 +108,7 @@ jobs:
               '.data[] | select(.triggered_by_tag == $TAG) | {status: .status_text, build_number: .build_number}' | head -n 1)
 
             if [ ! -z "$BUILD_DATA" ]; then
-              STATUS=$(echo "$BUILD_DATA" | jq -r '.status')
+              STATUS=$(echo "$BUILD_DATA" | jq -r '.status_text')
               BUILD_NUMBER=$(echo "$BUILD_DATA" | jq -r '.build_number')
 
               echo "Found matching build!"
