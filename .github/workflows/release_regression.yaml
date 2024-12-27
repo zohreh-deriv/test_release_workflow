@@ -71,6 +71,9 @@ jobs:
 
       - name: Wait for Bitrise Build
         id: wait_build
+        env:
+          BITRISE_APP_ID: ${{ secrets.BITRISE_APP_ID }}
+          BITRISE_PAT: ${{ secrets.BITRISE_PAT }}
         run: |
           # Wait for build to appear (it might take a few seconds after tag creation)
           sleep 30
@@ -79,8 +82,8 @@ jobs:
             echo "Checking for build with tag: ${{ steps.tag_info.outputs.tag_name }}"
             
             # Get recent builds with curl verbose mode to see the full request/response
-            BUILDS=$(curl -v -s https://api.bitrise.io/v0.1/apps/${{ secrets.BITRISE_APP_ID }}/builds \
-              --header "Authorization: Bearer ${{ secrets.BITRISE_PAT }}")
+            BUILDS=$(curl -v -s https://api.bitrise.io/v0.1/apps/$BITRISE_APP_ID/builds \
+              --header "Authorization: Bearer $BITRISE_PAT")
             
             # Debug: Check API response structure
             echo "API Response Structure:"
