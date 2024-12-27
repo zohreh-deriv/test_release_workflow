@@ -80,7 +80,7 @@ jobs:
             
             # Get recent builds with curl verbose mode to see the full request/response
             BUILDS=$(curl -v -s https://app.bitrise.io/app/${{ secrets.BITRISE_APP_ID }} \
-              --header "Authorization: ${{ secrets.BITRISE_PAT }}")
+              --header "Authorization: Bearer ${{ secrets.BITRISE_PAT }}")
             
             # Debug: Check API response structure
             echo "API Response Structure:"
