@@ -134,7 +134,7 @@ jobs:
 
       - name: Send Success Slack Notification
         if: steps.wait_build.outcome == 'success'
-        uses: ./.github/actions/send_slack_notification/regression_notification
+        uses: ./.github/actions/regression_notif
         with:
           SLACK_WEBHOOK_URL: ${{ secrets.RELEASE_SLACK_WEBHOOK_URL }}
           BETA_VERSION: ${{ steps.tag_info.outputs.tag_name }}
