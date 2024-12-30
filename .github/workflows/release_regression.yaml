@@ -1,9 +1,12 @@
 name: Release Regression Workflow
 
 on:
-  push:
+  create:
     branches:
       - release-v**
+
+    tags-ignore:
+      - "**"
 
 jobs:
   generate_regression:
