@@ -5,6 +5,10 @@ on:
     branches:
       - release-v**
 
+  push:
+    tags-ignore:
+      - "**"
+
 jobs:
   generate_regression:
     runs-on: ubuntu-latest
@@ -77,10 +81,10 @@ jobs:
         run: |
           # Wait for build to appear (it might take a few seconds after tag creation)
           sleep 30
-          
+
           # Initialize build_slug as empty
           BUILD_SLUG=""
-          
+
           # First, find the build with matching tag
           while [ -z "$BUILD_SLUG" ]; do
             echo "Searching for build with tag: ${{ steps.tag_info.outputs.tag_name }}"
@@ -113,7 +117,7 @@ jobs:
               sleep 30
             fi
           done
-          
+
           # Now that we have the build slug, only check this specific build's status
           while true; do
             echo "Checking status of build: $BUILD_NUMBER"
