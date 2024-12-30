@@ -111,36 +111,68 @@ jobs:
       - name: Wait for Bitrise Build
         if: steps.check_permissions.outputs.result == 'true'
         id: wait_build
+        env:
+          BITRISE_APP_ID: ${{ secrets.BITRISE_APP_ID }}
+          BITRISE_PAT: ${{ secrets.BITRISE_PAT }}
         run: |
           # Wait for build to appear (it might take a few seconds after tag creation)
           sleep 30
 
-          while true; do
+          # Initialize build_slug as empty
+          BUILD_SLUG=""
+
+          # First, find the build with matching tag
+          while [ -z "$BUILD_SLUG" ]; do
+            echo "Searching for build with tag: ${{ steps.tag_info.outputs.tag_name }}"
+            
             # Get recent builds
-            BUILDS=$(curl -s https://api.bitrise.io/v0.1/apps/${{ secrets.BITRISE_APP_ID }}/builds \
-              --header "Authorization: ${{ secrets.BITRISE_PAT }}")
+            BUILDS=$(curl -s https://api.bitrise.io/v0.1/apps/$BITRISE_APP_ID/builds?limit=10 \
+              --header "Authorization: $BITRISE_PAT")
             
-            # Look for build with matching tag
-            BUILD_DATA=$(echo $BUILDS | jq -r --arg TAG "${{ steps.generate_tag.outputs.tag_name }}" \
-              '.data[] | select(.triggered_by_tag == $TAG) | {status: .status_text, build_number: .build_number}' | head -n 1)
-            
-            if [ ! -z "$BUILD_DATA" ]; then
-              STATUS=$(echo $BUILD_DATA | jq -r '.status')
-              BUILD_NUMBER=$(echo $BUILD_DATA | jq -r '.build_number')
-              
-              echo "Current build status: $STATUS"
-              echo "build_number=$BUILD_NUMBER" >> $GITHUB_OUTPUT
-              
-              if [ "$STATUS" = "success" ]; then
-                echo "Build succeeded!"
-                exit 0
-              elif [ "$STATUS" = "failed" ] || [ "$STATUS" = "aborted" ]; then
-                echo "Build failed with status: $STATUS"
-                exit 1
-              fi
+            # Check if response contains data array
+            if ! echo "$BUILDS" | jq -e '.data' > /dev/null; then
+              echo "Error: API response does not contain 'data' array"
+              echo "Full API Response:"
+              echo "$BUILDS"
+              echo "Waiting 30 seconds before retry..."
+              sleep 30
+              continue
             fi
             
-            echo "Waiting 30 seconds before next check..."
+            # Extract build slug and number for the matching tag
+            BUILD_INFO=$(echo "$BUILDS" | jq -r --arg TAG "${{ steps.tag_info.outputs.tag_name }}" \
+              '.data[] | select(.tag == $TAG) | {slug: .slug, build_number: .build_number}' | jq -s '.[0]')
+            
+            if [ -n "$BUILD_INFO" ] && [ "$BUILD_INFO" != "null" ]; then
+              BUILD_SLUG=$(echo "$BUILD_INFO" | jq -r '.slug')
+              BUILD_NUMBER=$(echo "$BUILD_INFO" | jq -r '.build_number')
+              echo "Found build! Slug: $BUILD_SLUG, Number: $BUILD_NUMBER"
+              echo "build_number=$BUILD_NUMBER" >> $GITHUB_OUTPUT
+            else
+              echo "No build found yet. Waiting 30 seconds..."
+              sleep 30
+            fi
+          done
+
+          # Now that we have the build slug, only check this specific build's status
+          while true; do
+            echo "Checking status of build: $BUILD_NUMBER"
+            
+            # Get status of specific build
+            BUILD_STATUS=$(curl -s "https://api.bitrise.io/v0.1/apps/$BITRISE_APP_ID/builds/$BUILD_SLUG" \
+              --header "Authorization: $BITRISE_PAT" | jq -r '.data.status_text')
+            
+            echo "Current build status: $BUILD_STATUS"
+            
+            if [ "$BUILD_STATUS" = "success" ]; then
+              echo "Build succeeded!"
+              exit 0
+            elif [ "$BUILD_STATUS" = "failed" ] || [ "$BUILD_STATUS" = "aborted" ]; then
+              echo "Build failed with status: $BUILD_STATUS"
+              exit 1
+            fi
+            
+            echo "Build still in progress. Waiting 30 seconds..."
             sleep 30
           done
 
@@ -150,7 +182,6 @@ jobs:
         with:
           SLACK_WEBHOOK_URL: ${{ secrets.RELEASE_SLACK_WEBHOOK_URL }}
           BETA_VERSION: ${{ steps.generate_tag.outputs.tag_name }}
-          BUILD_NUMBER: ${{ steps.wait_build.outputs.build_number }}
 
       - name: Comment on PR if user lacks permission
         if: steps.check_permissions.outputs.result == 'false'
