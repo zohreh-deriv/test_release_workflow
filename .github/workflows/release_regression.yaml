@@ -101,7 +101,7 @@ jobs:
 
             echo "Searching for build with tag in response data..."
             # Debug: Show all builds and their tags
-            echo "$BUILDS" | jq -r '.data[] | "Build number: \(.build_number), Tag: \(.tag) Status: \(.status_text)"'
+            echo "$BUILDS" | jq -r '.data[] | "Build number: \(.build_number), Tag: \(.tag), Status: \(.status_text)"'
 
             # look for build with matching tag
             BUILD_DATA=$(echo "$BUILDS" | jq -r --arg TAG "${{ steps.tag_info.outputs.tag_name }}" \
@@ -116,10 +116,10 @@ jobs:
               echo "Build number: $BUILD_NUMBER"
               echo "build_number=$BUILD_NUMBER" >> $GITHUB_OUTPUT
 
-              if [ "$STATUS" = "success" ]; then
+              if [ STATUS = "success" ]; then
                 echo "Build succeeded!"
                 exit 0
-              elif [ "$STATUS" = "failed" ] || [ "$STATUS" = "aborted" ]; then
+              elif [ STATUS = "failed" ] || [ STATUS = "aborted" ]; then
                 echo "Build failed with status: $STATUS"
                 exit 1
               fi
