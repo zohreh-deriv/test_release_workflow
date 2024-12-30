@@ -58,19 +58,27 @@ jobs:
             }
             return { prTitle };
 
-      - name: Checkout code
+      - name: Checkout PR Code
         if: steps.check_permissions.outputs.result == 'true'
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           fetch-depth: 0
+          ref: ${{ steps.pr_details.outputs.ref }}
           ssh-key: ${{ secrets.SSH_PRIVATE_KEY }}
-          ref: ${{ github.event.issue.pull_request.head.ref }}
 
-      - name: Get version from pubspec
+      - name: Get version from pubspec (PR branch)
         if: steps.check_permissions.outputs.result == 'true'
         id: get_version
         run: |
-          VERSION=$(grep 'version:' pubspec.yaml | cut -d' ' -f2 | tr -d '\r')
+          if [ ! -f pubspec.yaml ]; then
+            echo "pubspec.yaml not found"
+            exit 1
+          fi
+          VERSION=$(grep '^version:' pubspec.yaml | cut -d' ' -f2 | tr -d '\r')
+          if [ -z "$VERSION" ]; then
+            echo "Version not found in pubspec.yaml"
+            exit 1
+          fi
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
       - name: Generate unique tag name
