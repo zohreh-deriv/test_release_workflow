@@ -137,5 +137,5 @@ jobs:
         uses: ./.github/actions/regression_notif
         with:
           SLACK_WEBHOOK_URL: ${{ secrets.RELEASE_SLACK_WEBHOOK_URL }}
-          BETA_VERSION: ${{ steps.tag_info.outputs.tag_name }}
+          NEW_VERSION: ${{ steps.tag_info.outputs.tag_name }}
           BUILD_NUMBER: ${{ steps.wait_build.outputs.build_number }}

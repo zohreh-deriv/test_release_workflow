@@ -4,7 +4,7 @@ inputs:
   SLACK_WEBHOOK_URL:
     description: "Slack webhook URL"
     required: true
-  New_VERSION:
+  NEW_VERSION:
     description: "New version"
     required: true
   BUILD_NUMBER:
@@ -24,7 +24,7 @@ runs:
               "type": "section",
               "text": {
                 "type": "mrkdwn",
-                "text": "<!channel> *🔄 Regression Build Available: version ${New_VERSION}*"
+                "text": "<!channel> *🔄 Regression Build Available: version ${NEW_VERSION}*"
               }
             },
             {
@@ -37,7 +37,7 @@ runs:
               "type": "section",
               "text": {
                 "type": "mrkdwn",
-                "text": "@here Hi Team,\n\nThe regression build for Version 1.1.2 is now ready for testing! 🎯\n\nPlease prioritize testing and report any issues.\n"
+                "text": "@here Hi Team,\n\nThe regression build for Version ${NEW_VERSION} is now ready for testing! 🎯\n\nPlease prioritize testing and report any issues.\n"
               }
             }
           ]
