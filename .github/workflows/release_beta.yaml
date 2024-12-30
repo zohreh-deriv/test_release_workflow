@@ -39,7 +39,7 @@ jobs:
               return false;
             }
 
-      - name: Get PR Details
+      - name: Get PR Details and Version
         if: steps.check_permissions.outputs.result == 'true'
         id: pr_details
         uses: actions/github-script@v6
@@ -51,41 +51,44 @@ jobs:
               repo,
               pull_number: context.issue.number
             });
+            
             const prTitle = prResponse.data.title;
             if (!prTitle.startsWith('chore: sync branches')) {
               core.setFailed('PR title does not start with "chore: sync branches"');
               return;
             }
+
+            // Get pubspec.yaml content from PR
+            const pubspecResponse = await github.rest.repos.getContent({
+              owner,
+              repo,
+              path: 'pubspec.yaml',
+              ref: prResponse.data.head.sha // Use PR's head commit
+            });
+
+            const pubspecContent = Buffer.from(pubspecResponse.data.content, 'base64').toString();
+            const versionMatch = pubspecContent.match(/^version:\s*(.+)$/m);
+            
+            if (!versionMatch) {
+              core.setFailed('Version not found in pubspec.yaml');
+              return;
+            }
+
+            core.setOutput('version', versionMatch[1].trim());
             return { prTitle };
 
-      - name: Checkout PR Code
+      - name: Checkout code
         if: steps.check_permissions.outputs.result == 'true'
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           fetch-depth: 0
-          ref: ${{ steps.pr_details.outputs.ref }}
           ssh-key: ${{ secrets.SSH_PRIVATE_KEY }}
-
-      - name: Get version from pubspec (PR branch)
-        if: steps.check_permissions.outputs.result == 'true'
-        id: get_version
-        run: |
-          if [ ! -f pubspec.yaml ]; then
-            echo "pubspec.yaml not found"
-            exit 1
-          fi
-          VERSION=$(grep '^version:' pubspec.yaml | cut -d' ' -f2 | tr -d '\r')
-          if [ -z "$VERSION" ]; then
-            echo "Version not found in pubspec.yaml"
-            exit 1
-          fi
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
 
       - name: Generate unique tag name
         if: steps.check_permissions.outputs.result == 'true'
         id: generate_tag
         run: |
-          BASE_TAG="internal-v${{ steps.get_version.outputs.version }}"
+          BASE_TAG="internal-v${{ steps.pr_details.outputs.version }}"
           if ! git rev-parse "$BASE_TAG" >/dev/null 2>&1; then
             echo "tag_name=$BASE_TAG" >> $GITHUB_OUTPUT
           else
@@ -131,7 +134,7 @@ jobs:
 
           # First, find the build with matching tag
           while [ -z "$BUILD_SLUG" ]; do
-            echo "Searching for build with tag: ${{ steps.tag_info.outputs.tag_name }}"
+            echo "Searching for build with tag: ${{ steps.generate_tag.outputs.tag_name }}"
             
             # Get recent builds
             BUILDS=$(curl -s https://api.bitrise.io/v0.1/apps/$BITRISE_APP_ID/builds?limit=10 \
@@ -148,7 +151,7 @@ jobs:
             fi
             
             # Extract build slug and number for the matching tag
-            BUILD_INFO=$(echo "$BUILDS" | jq -r --arg TAG "${{ steps.tag_info.outputs.tag_name }}" \
+            BUILD_INFO=$(echo "$BUILDS" | jq -r --arg TAG "${{ steps.generate_tag.outputs.tag_name }}" \
               '.data[] | select(.tag == $TAG) | {slug: .slug, build_number: .build_number}' | jq -s '.[0]')
             
             if [ -n "$BUILD_INFO" ] && [ "$BUILD_INFO" != "null" ]; then
