@@ -16,9 +16,12 @@ runs:
     - name: Send Slack Notification on pull request merge
       env:
         SLACK_WEBHOOK_URL: ${{ inputs.SLACK_WEBHOOK_URL }}
+        NEW_VERSION: ${{ inputs.NEW_VERSION }}
+        BUILD_NUMBER: ${{ inputs.BUILD_NUMBER }}
       run: |
         curl -X POST -H 'Content-type: application/json' \
-        --data '{
+        --data "$(cat <<EOF
+        {
           "blocks": [
             {
               "type": "section",
@@ -32,7 +35,8 @@ runs:
               "text": {
                 "type": "mrkdwn",
                 "text": "*Build Number: ${BUILD_NUMBER}*"
-              },
+              }
+            },
             {
               "type": "section",
               "text": {
@@ -41,6 +45,8 @@ runs:
               }
             }
           ]
-        }' \
+        }
+        EOF
+        )" \
         $SLACK_WEBHOOK_URL
       shell: bash
