@@ -82,7 +82,7 @@ jobs:
             echo "Checking for build with tag: ${{ steps.tag_info.outputs.tag_name }}"
             
             # Get recent builds with curl verbose mode to see the full request/response
-            BUILDS=$(curl -v -s https://api.bitrise.io/v0.1/apps/$BITRISE_APP_ID/builds \
+            BUILDS=$(curl -v -s https://api.bitrise.io/v0.1/apps/$BITRISE_APP_ID/builds?limit=10 \
               --header "Authorization: $BITRISE_PAT")
             
             # Debug: Check API response structure
@@ -101,7 +101,7 @@ jobs:
 
             echo "Searching for build with tag in response data..."
             # Debug: Show all builds and their tags
-            echo "$BUILDS" | jq -r '.data[] | "Build number: \(.build_number), Tag: \(.tag)"'
+            echo "$BUILDS" | jq -r '.data[] | "Build number: \(.build_number), Tag: \(.tag) Status: \(.status_text)"'
 
             # look for build with matching tag
             BUILD_DATA=$(echo "$BUILDS" | jq -r --arg TAG "${{ steps.tag_info.outputs.tag_name }}" \
