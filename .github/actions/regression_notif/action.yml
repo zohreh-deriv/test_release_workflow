@@ -41,7 +41,7 @@ runs:
               "type": "section",
               "text": {
                 "type": "mrkdwn",
-                "text": "@here Hi Team,\n\nThe regression build for Version ${NEW_VERSION} is now ready for testing! 🎯\n\nPlease prioritize testing and report any issues.\n"
+                "text": "Hi Team,\n\nThe regression build for Version ${NEW_VERSION} is now ready for testing! 🎯\n\nPlease prioritize testing and report any issues.\n"
               }
             }
           ]

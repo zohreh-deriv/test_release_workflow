@@ -13,9 +13,11 @@ runs:
     - name: Send Slack Notification on pull request merge
       env:
         SLACK_WEBHOOK_URL: ${{ inputs.SLACK_WEBHOOK_URL }}
+        BETA_VERSION: ${{ inputs.BETA_VERSION }}
       run: |
         curl -X POST -H 'Content-type: application/json' \
-        --data '{
+        --data "$(cat <<EOF
+        {
           "blocks": [
             {
               "type": "section",
@@ -28,10 +30,12 @@ runs:
               "type": "section",
               "text": {
                 "type": "mrkdwn",
-                "text": "@here Hi Team,\n\nWe’re excited to announce that *Version ${BETA_VERSION}* of our product is now available for internal testing! 🎉\n\nPlease test thoroughly and share your feedback.\nWe aim to release this version ASAP once we receive your green light! 🟢"
+                "text": "Hi Team,\n\nWe’re excited to announce that *Version ${BETA_VERSION}* of our product is now available for internal testing! 🎉\n\nPlease test thoroughly and share your feedback.\nWe aim to release this version ASAP once we receive your green light! 🟢"
               }
             }
           ]
-        }' \
+        }
+        EOF
+        )" \
         $SLACK_WEBHOOK_URL
       shell: bash
