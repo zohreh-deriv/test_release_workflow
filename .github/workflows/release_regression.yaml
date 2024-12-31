@@ -5,12 +5,10 @@ on:
     branches:
       - release-v**
 
-    tags-ignore:
-      - "*"
-
 jobs:
   generate_regression:
     runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/heads/release-v')
     steps:
       - name: Checkout code
         # should use hash commit due to security issues
