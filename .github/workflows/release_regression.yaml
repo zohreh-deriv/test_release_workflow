@@ -79,13 +79,13 @@ jobs:
               repo
             });
 
-            const expectedBranchName = `release-v${version}`;
+            const branchPrefix = `release-v${version}`;
             const releaseBranch = branches.find(branch => 
-              branch.name === expectedBranchName
+              branch.name.startsWith(branchPrefix)
             );
 
             if (!releaseBranch) {
-              core.setFailed(`No matching release branch found: ${expectedBranchName}`);
+              core.setFailed(`No branch found starting with: ${branchPrefix}`);
               return false;
             }
 
