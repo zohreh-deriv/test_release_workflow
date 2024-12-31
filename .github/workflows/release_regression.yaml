@@ -5,8 +5,8 @@ on:
     branches:
       - release-v**
 
-    tags:
-      - "!**"
+    tags-ignore:
+      - "*"
 
 jobs:
   generate_regression:
