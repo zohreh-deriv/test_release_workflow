@@ -4,35 +4,131 @@ on:
   create:
     branches:
       - release-v**
+  issue_comment:
+    types: [created]
 
 jobs:
   generate_regression:
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/heads/release-v')
+    if: |
+      (github.event_name == 'create' && startsWith(github.ref, 'refs/heads/release-v')) ||
+      (github.event_name == 'issue_comment' && github.event.issue.pull_request && contains(github.event.comment.body, 'trigger-regression'))
+    permissions:
+      contents: write
+      pull-requests: read
+      issues: read
+
     steps:
+      - name: Check user permissions
+        if: github.event_name == 'issue_comment'
+        id: check_permissions
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const username = context.payload.comment.user.login;
+
+            try {
+              const { data: permission } = await github.rest.repos.getCollaboratorPermissionLevel({
+                owner,
+                repo,
+                username,
+              });
+              
+              if (!['admin', 'write'].includes(permission.permission)) {
+                core.setFailed('User does not have write access to the repository');
+                return false;
+              }
+              return true;
+            } catch (error) {
+              core.setFailed('Failed to check user permissions');
+              return false;
+            }
+
+      - name: Get PR Details and Validate
+        if: github.event_name == 'issue_comment' && steps.check_permissions.outputs.result == 'true'
+        id: pr_details
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const prResponse = await github.rest.pulls.get({
+              owner,
+              repo,
+              pull_number: context.issue.number
+            });
+
+            // Check if PR title starts with "chore: sync branches"
+            const prTitle = prResponse.data.title;
+            if (!prTitle.startsWith('chore: sync branches')) {
+              core.setFailed('PR title does not start with "chore: sync branches"');
+              return false;
+            }
+
+            // Extract version from PR title
+            const versionMatch = prTitle.match(/version\s+(\d+\.\d+\.\d+)(?:\+\d+)?/);
+            if (!versionMatch) {
+              core.setFailed('Could not extract version from PR title');
+              return false;
+            }
+            const version = versionMatch[1]; // This gets just the x.y.z part without the build number
+
+            // Get list of branches to check if matching release branch exists
+            const { data: branches } = await github.rest.repos.listBranches({
+              owner,
+              repo
+            });
+
+            const expectedBranchName = `release-v${version}`;
+            const releaseBranch = branches.find(branch => 
+              branch.name === expectedBranchName
+            );
+
+            if (!releaseBranch) {
+              core.setFailed(`No matching release branch found: ${expectedBranchName}`);
+              return false;
+            }
+
+            core.setOutput('release_branch', releaseBranch.name);
+            core.setOutput('version', version);
+            return { 
+              ref: prResponse.data.head.ref,
+              version: version,
+              releaseBranch: releaseBranch.name
+            };
+
       - name: Checkout code
-        # should use hash commit due to security issues
+        if: |
+          github.event_name == 'create' || 
+          (github.event_name == 'issue_comment' && steps.check_permissions.outputs.result == 'true' && steps.pr_details.outcome == 'success')
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           fetch-depth: 0
           ssh-key: ${{ secrets.SSH_PRIVATE_KEY }}
+          ref: ${{ github.event_name == 'create' && github.ref || steps.pr_details.outputs.release_branch }}
 
       - name: Get branch name and version
         id: branch_info
         run: |
-          BRANCH_NAME=${GITHUB_REF#refs/heads/}
-          APP_VERSION=${BRANCH_NAME#release-v}
+          if [ "${{ github.event_name }}" = "create" ]; then
+            BRANCH_NAME=${GITHUB_REF#refs/heads/}
+            APP_VERSION=${BRANCH_NAME#release-v}
+          else
+            BRANCH_NAME="${{ steps.pr_details.outputs.release_branch }}"
+            APP_VERSION="${{ steps.pr_details.outputs.version }}"
+          fi
           echo "branch_name=$BRANCH_NAME" >> $GITHUB_OUTPUT
           echo "app_version=$APP_VERSION" >> $GITHUB_OUTPUT
 
       - name: Update pubspec version
+        if: github.event_name == 'create'
         run: |
           sed -i "s/^version: .*/version: ${{ steps.branch_info.outputs.app_version }}/" pubspec.yaml
 
-      - name: Commit and push the version update and create a Pull Request to master.
+      - name: Commit and push the version update and create a Pull Request to master
+        if: github.event_name == 'create'
         uses: peter-evans/create-pull-request@76c6f5c20e2111bfee3cd30fae52a25e410f5efc
         with:
-          # personal access token of the mobile deriv apps
           token: ${{ secrets.MOBILE_APPS_PAT }}
           title: "chore: sync branches, merge release version ${{ steps.branch_info.outputs.app_version }} into master"
           branch: ${{ steps.branch_info.outputs.branch_name }}
@@ -58,7 +154,7 @@ jobs:
       - name: Create Release Tag
         uses: actions/create-release@v1
         env:
-          GITHUB_TOKEN: ${{ secrets.MOBILE_APPS_PAT }} # personal access token mobile team account
+          GITHUB_TOKEN: ${{ secrets.MOBILE_APPS_PAT }}
         with:
           tag_name: ${{ steps.tag_info.outputs.tag_name }}
           release_name: Release ${{ steps.tag_info.outputs.tag_name }}
@@ -144,3 +240,29 @@ jobs:
           SLACK_WEBHOOK_URL: ${{ secrets.RELEASE_SLACK_WEBHOOK_URL }}
           NEW_VERSION: ${{ steps.branch_info.outputs.app_version }}
           BUILD_NUMBER: ${{ steps.wait_build.outputs.build_number }}
+
+      - name: Comment on PR if validation fails
+        if: |
+          github.event_name == 'issue_comment' && 
+          (steps.check_permissions.outputs.result == 'false' || steps.pr_details.outcome == 'failure')
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            let message = '';
+            
+            if (steps.check_permissions.outputs.result == 'false') {
+              message = '❌ Unable to trigger regression release: You do not have write access to this repository.';
+            } else if (!context.payload.issue.pull_request) {
+              message = '❌ This comment is not on a pull request.';
+            } else if (steps.pr_details.outcome == 'failure') {
+              message = '❌ Validation failed.\n' +
+                       'You\'re not able to trigger a regression workflow on this PR.';
+            }
+            
+            await github.rest.issues.createComment({
+              owner,
+              repo,
+              issue_number: context.issue.number,
+              body: message
+            });
