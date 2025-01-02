@@ -99,14 +99,6 @@ jobs:
             echo "tag_name=$BASE_TAG+$counter" >> $GITHUB_OUTPUT
           fi
 
-      - name: Create and push tag
-        if: steps.check_permissions.outputs.result == 'true'
-        run: |
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
-          git tag -a ${{ steps.generate_tag.outputs.tag_name }} -m "Beta release ${{ steps.generate_tag.outputs.tag_name }}"
-          git push origin ${{ steps.generate_tag.outputs.tag_name }}
-
       - name: Create Release
         if: steps.check_permissions.outputs.result == 'true'
         uses: softprops/action-gh-release@7b4da11513bf3f43f9999e90eabced41ab8bb048
@@ -187,12 +179,12 @@ jobs:
             sleep 30
           done
 
-      - name: Send Success Slack Notification
-        if: steps.check_permissions.outputs.result == 'true' && steps.wait_build.outcome == 'success'
-        uses: ./.github/actions/beta_notif
-        with:
-          SLACK_WEBHOOK_URL: ${{ secrets.RELEASE_SLACK_WEBHOOK_URL }}
-          BETA_VERSION: ${{ steps.generate_tag.outputs.tag_name }}
+      # - name: Send Success Slack Notification
+      #   if: steps.check_permissions.outputs.result == 'true' && steps.wait_build.outcome == 'success'
+      #   uses: ./.github/actions/beta_notif
+      #   with:
+      #     SLACK_WEBHOOK_URL: ${{ secrets.RELEASE_SLACK_WEBHOOK_URL }}
+      #     BETA_VERSION: ${{ steps.generate_tag.outputs.tag_name }}
 
       - name: Comment on PR if user lacks permission
         if: steps.check_permissions.outputs.result == 'false'

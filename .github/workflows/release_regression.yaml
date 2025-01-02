@@ -156,7 +156,7 @@ jobs:
           commit-message: "chore: update app version to ${{ steps.branch_info.outputs.app_version }}"
           base: master
 
-      - name: Generate tag name
+      - name: Generate unique tag name
         id: tag_info
         run: |
 
@@ -173,19 +173,17 @@ jobs:
           fi
 
       - name: Create Release Tag
-        uses: actions/create-release@v1
+        if: steps.check_permissions.outputs.result == 'true'
+        uses: softprops/action-gh-release@7b4da11513bf3f43f9999e90eabced41ab8bb048
         env:
           GITHUB_TOKEN: ${{ secrets.MOBILE_APPS_PAT }}
         with:
           tag_name: ${{ steps.tag_info.outputs.tag_name }}
-          release_name: Release ${{ steps.tag_info.outputs.tag_name }}
-          body: |
-            Automated release for version ${{ steps.branch_info.outputs.app_version }}
-
-            Changes since last release:
-            ${{ github.event.head_commit.message }}
+          release_name: ${{ steps.tag_info.outputs.tag_name }}
           draft: false
+          generate_release_notes: true
           prerelease: true
+          make_latest: false
 
       - name: Wait for Bitrise Build
         id: wait_build
@@ -254,13 +252,13 @@ jobs:
             sleep 30
           done
 
-      - name: Send Success Slack Notification
-        if: steps.wait_build.outcome == 'success'
-        uses: ./.github/actions/regression_notif
-        with:
-          SLACK_WEBHOOK_URL: ${{ secrets.RELEASE_SLACK_WEBHOOK_URL }}
-          NEW_VERSION: ${{ steps.branch_info.outputs.app_version }}
-          BUILD_NUMBER: ${{ steps.wait_build.outputs.build_number }}
+      # - name: Send Success Slack Notification
+      #   if: steps.wait_build.outcome == 'success'
+      #   uses: ./.github/actions/regression_notif
+      #   with:
+      #     SLACK_WEBHOOK_URL: ${{ secrets.RELEASE_SLACK_WEBHOOK_URL }}
+      #     NEW_VERSION: ${{ steps.branch_info.outputs.app_version }}
+      #     BUILD_NUMBER: ${{ steps.wait_build.outputs.build_number }}
 
       - name: Comment on PR if validation fails
         if: |
