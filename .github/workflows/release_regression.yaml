@@ -52,15 +52,18 @@ jobs:
         with:
           script: |
             const { owner, repo } = context.repo;
+
+            // Fetch PR details
             const prResponse = await github.rest.pulls.get({
               owner,
               repo,
               pull_number: context.issue.number
             });
 
-            // Check if PR title starts with "chore: sync branches"
             const prTitle = prResponse.data.title;
             console.log('PR Title:', prTitle);
+
+            // Validate PR title
             if (!prTitle.startsWith('chore: sync branches')) {
               core.setFailed('PR title does not start with "chore: sync branches"');
               return false;
@@ -72,14 +75,23 @@ jobs:
               core.setFailed('Could not extract version from PR title');
               return false;
             }
-            const version = versionMatch[1]; // This gets just the x.y.z part without the build number
+            const version = versionMatch[1];
             console.log('Extracted version:', version);
 
-            // Get list of branches to check if matching release branch exists
-            const { data: branches } = await github.rest.repos.listBranches({
-              owner,
-              repo
-            });
+            // Fetch all branches with pagination
+            let branches = [];
+            let page = 1;
+            while (true) {
+              const { data } = await github.rest.repos.listBranches({
+                owner,
+                repo,
+                per_page: 100,
+                page
+              });
+              branches = branches.concat(data);
+              if (data.length < 100) break;
+              page++;
+            }
 
             console.log('Available branches:', branches.map(b => b.name));
 
@@ -259,7 +271,7 @@ jobs:
           script: |
             const { owner, repo } = context.repo;
             let message = '';
-            
+
             if (steps.check_permissions.outputs.result == 'false') {
               message = '❌ Unable to trigger regression release: You do not have write access to this repository.';
             } else if (!context.payload.issue.pull_request) {
@@ -268,7 +280,7 @@ jobs:
               message = '❌ Validation failed.\n' +
                        'You\'re not able to trigger a regression workflow on this PR.';
             }
-            
+
             await github.rest.issues.createComment({
               owner,
               repo,
