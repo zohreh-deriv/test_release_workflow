@@ -159,18 +159,18 @@ jobs:
       - name: Generate tag name
         id: tag_info
         run: |
+
           DATE=$(date +'%d-%m-%Y')
           BASE_TAG="firebase-${DATE}-${{ steps.branch_info.outputs.app_version }}"
-
-          # Check for existing tags with same app version
-          EXISTING_TAGS=$(git tag -l "firebase-*-${{ steps.branch_info.outputs.app_version }}*")
-          if [ -z "$EXISTING_TAGS" ]; then
-            TAG_NAME=$BASE_TAG
+          if ! git rev-parse "$BASE_TAG" >/dev/null 2>&1; then
+            echo "tag_name=$BASE_TAG" >> $GITHUB_OUTPUT
           else
-            COUNT=$(echo "$EXISTING_TAGS" | wc -l)
-            TAG_NAME="${BASE_TAG}+${COUNT}"
+            counter=1
+            while git rev-parse "$BASE_TAG+$counter" >/dev/null 2>&1; do
+              counter=$((counter + 1))
+            done
+            echo "tag_name=$BASE_TAG+$counter" >> $GITHUB_OUTPUT
           fi
-          echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
 
       - name: Create Release Tag
         uses: actions/create-release@v1
