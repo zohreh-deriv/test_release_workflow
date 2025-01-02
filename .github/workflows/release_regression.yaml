@@ -79,6 +79,8 @@ jobs:
               repo
             });
 
+            echo "branches: $branches"
+
             const branchPrefix = `release-v${version}`;
             const releaseBranch = branches.find(branch => 
               branch.name.startsWith(branchPrefix)
@@ -250,7 +252,7 @@ jobs:
           script: |
             const { owner, repo } = context.repo;
             let message = '';
-            
+
             if (steps.check_permissions.outputs.result == 'false') {
               message = '❌ Unable to trigger regression release: You do not have write access to this repository.';
             } else if (!context.payload.issue.pull_request) {
@@ -259,7 +261,7 @@ jobs:
               message = '❌ Validation failed.\n' +
                        'You\'re not able to trigger a regression workflow on this PR.';
             }
-            
+
             await github.rest.issues.createComment({
               owner,
               repo,
