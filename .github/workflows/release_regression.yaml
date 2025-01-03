@@ -14,9 +14,10 @@ jobs:
       (github.event_name == 'create' && startsWith(github.ref, 'refs/heads/release-v')) ||
       (github.event_name == 'issue_comment' && github.event.issue.pull_request && contains(github.event.comment.body, 'trigger-regression'))
     permissions:
-      contents: write
-      pull-requests: read
-      issues: read
+      contents: write      # For creating tags, releases, and pushing changes
+      pull-requests: write # For creating and commenting on PRs
+      issues: write       # For commenting on issues/PRs
+      actions: read       # For checking action status
 
     steps:
       - name: Check user permissions
@@ -25,9 +26,25 @@ jobs:
         with:
           script: |
             const { owner, repo } = context.repo;
-            const username = context.payload.comment.user.login;
+            let username;
+            
+            // Handle different event types
+            if (context.eventName === 'issue_comment') {
+              username = context.payload.comment.user.login;
+            } else if (context.eventName === 'create') {
+              username = context.payload.sender.login;
+            } else {
+              core.setFailed('Unsupported event type');
+              return false;
+            }
 
             try {
+              // Check if user exists
+              if (!username) {
+                core.setFailed('Could not determine user');
+                return false;
+              }
+
               const { data: permission } = await github.rest.repos.getCollaboratorPermissionLevel({
                 owner,
                 repo,
@@ -261,7 +278,9 @@ jobs:
           done
 
       # - name: Send Success Slack Notification
-      #   if: steps.wait_build.outcome == 'success'
+      #   if: |
+      #     steps.wait_build.outcome == 'success' && 
+      #     steps.check_permissions.outputs.result == 'true'
       #   uses: ./.github/actions/regression_notif
       #   with:
       #     SLACK_WEBHOOK_URL: ${{ secrets.RELEASE_SLACK_WEBHOOK_URL }}
