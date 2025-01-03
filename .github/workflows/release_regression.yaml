@@ -20,7 +20,6 @@ jobs:
 
     steps:
       - name: Check user permissions
-        if: github.event_name == 'issue_comment'
         id: check_permissions
         uses: actions/github-script@v6
         with:
@@ -46,7 +45,9 @@ jobs:
             }
 
       - name: Get PR Details and Validate
-        if: github.event_name == 'issue_comment' && steps.check_permissions.outputs.result == 'true'
+        if: |
+          github.event_name == 'issue_comment' && 
+          steps.check_permissions.outputs.result == 'true'
         id: pr_details
         uses: actions/github-script@v6
         with:
@@ -120,7 +121,7 @@ jobs:
 
       - name: Checkout code
         if: |
-          github.event_name == 'create' || 
+          (github.event_name == 'create' && steps.check_permissions.outputs.result == 'true') || 
           (github.event_name == 'issue_comment' && steps.check_permissions.outputs.result == 'true' && steps.pr_details.outcome == 'success')
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
@@ -129,6 +130,7 @@ jobs:
           ref: ${{ github.event_name == 'create' && github.ref || steps.pr_details.outputs.release_branch }}
 
       - name: Get branch name and version
+        if: steps.check_permissions.outputs.result == 'true'
         id: branch_info
         run: |
           if [ "${{ github.event_name }}" = "create" ]; then
@@ -142,12 +144,16 @@ jobs:
           echo "app_version=$APP_VERSION" >> $GITHUB_OUTPUT
 
       - name: Update pubspec version
-        if: github.event_name == 'create'
+        if: |
+          github.event_name == 'create' && 
+          steps.check_permissions.outputs.result == 'true'
         run: |
           sed -i "s/^version: .*/version: ${{ steps.branch_info.outputs.app_version }}/" pubspec.yaml
 
       - name: Commit and push the version update and create a Pull Request to master
-        if: github.event_name == 'create'
+        if: |
+          github.event_name == 'create' && 
+          steps.check_permissions.outputs.result == 'true'
         uses: peter-evans/create-pull-request@76c6f5c20e2111bfee3cd30fae52a25e410f5efc
         with:
           token: ${{ secrets.MOBILE_APPS_PAT }}
@@ -157,6 +163,7 @@ jobs:
           base: master
 
       - name: Generate unique tag name
+        if: steps.check_permissions.outputs.result == 'true'
         id: tag_info
         run: |
 
@@ -186,6 +193,7 @@ jobs:
           make_latest: false
 
       - name: Wait for Bitrise Build
+        if: steps.check_permissions.outputs.result == 'true'
         id: wait_build
         env:
           BITRISE_APP_ID: ${{ secrets.BITRISE_APP_ID }}
