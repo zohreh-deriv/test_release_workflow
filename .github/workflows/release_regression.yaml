@@ -88,7 +88,7 @@ jobs:
             }
 
             // Extract version from PR title
-            const versionMatch = prTitle.match(/version\s+(\d+\.\d+\.\d+)(?:\+\d+)?/);
+            const versionMatch = prTitle.match(/version\s+(\d+\.\d+\.\d+(?:\+\d+)?)/);
             if (!versionMatch) {
               core.setFailed('Could not extract version from PR title');
               return false;
@@ -152,13 +152,20 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" = "create" ]; then
             BRANCH_NAME=${GITHUB_REF#refs/heads/}
-            APP_VERSION=${BRANCH_NAME#release-v}
+            # Extract full version including any +number suffix
+            if [[ $BRANCH_NAME =~ release-v([0-9]+\.[0-9]+\.[0-9]+(?:\+[0-9]+)?) ]]; then
+              APP_VERSION="${BASH_REMATCH[1]}"
+            else
+              APP_VERSION=${BRANCH_NAME#release-v}
+            fi
           else
             BRANCH_NAME="${{ steps.pr_details.outputs.release_branch }}"
             APP_VERSION="${{ steps.pr_details.outputs.version }}"
           fi
           echo "branch_name=$BRANCH_NAME" >> $GITHUB_OUTPUT
           echo "app_version=$APP_VERSION" >> $GITHUB_OUTPUT
+          # Debug output
+          echo "Debug: APP_VERSION=$APP_VERSION"
 
       - name: Update pubspec version
         if: |
@@ -205,6 +212,10 @@ jobs:
             done
             echo "tag_name=${BASE_TAG}+${counter}" >> $GITHUB_OUTPUT
           fi
+
+
+
+
 
       - name: Create Release Tag
         if: steps.check_permissions.outputs.result == 'true'
