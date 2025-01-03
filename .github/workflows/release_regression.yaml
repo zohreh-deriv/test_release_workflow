@@ -192,42 +192,29 @@ jobs:
         if: steps.check_permissions.outputs.result == 'true'
         id: tag_info
         run: |
-          # Fetch all tags first
-          git fetch --tags
+          # Fetch all tags
+            git fetch --tags
 
-          DATE=$(date +'%d-%m-%Y')
-          VERSION="${{ steps.branch_info.outputs.app_version }}"
-          echo "Input version: $VERSION"
+            DATE=$(date +'%d-%m-%Y')
+            VERSION="${{ steps.branch_info.outputs.app_version }}"
+            echo "Input version: $VERSION"
 
-          # Create base tag
-          BASE_TAG="firebase-${DATE}-${VERSION}"
-          echo "Base tag: $BASE_TAG"
+            # Base tag
+            BASE_TAG="firebase-${DATE}-${VERSION}"
+            echo "Base tag: $BASE_TAG"
 
-          # List all matching tags for debugging
-          echo "All matching tags:"
-          git tag -l "${BASE_TAG}*"
+            # Initialize final tag
+            FINAL_TAG=$BASE_TAG
 
-          # Check if base tag exists
-          if ! git rev-parse "$BASE_TAG" >/dev/null 2>&1; then
-            echo "No existing tag found"
-            echo "tag_name=$BASE_TAG" >> $GITHUB_OUTPUT
-          else
-            # Find highest counter
-            highest=0
-            while read -r tag; do
-              if [[ $tag =~ \+([0-9]+)$ ]]; then
-                num="${BASH_REMATCH[1]}"
-                if (( num > highest )); then
-                  highest=$num
-                fi
-              fi
-            done < <(git tag -l "${BASE_TAG}*")
-            
-            next=$((highest + 1))
-            echo "Highest counter found: $highest"
-            echo "Using next counter: $next"
-            echo "tag_name=$BASE_TAG+$next" >> $GITHUB_OUTPUT
-          fi
+            # Increment counter until a unique tag is found
+            counter=0
+            while git rev-parse "$FINAL_TAG" >/dev/null 2>&1; do
+              counter=$((counter + 1))
+              FINAL_TAG="${BASE_TAG}+${counter}"
+            done
+
+            echo "Generated unique tag: $FINAL_TAG"
+            echo "tag_name=$FINAL_TAG" >> $GITHUB_OUTPUT
 
       - name: Create Release Tag
         if: steps.check_permissions.outputs.result == 'true'
